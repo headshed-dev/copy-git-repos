@@ -18,10 +18,35 @@ CURRENT_DATE=$(date +'%Y-%m-%d_%H-%M-%S')
 # eg./ 30 days = 2592000 seconds
 CURRENT_DATE_MINUS_N_DAYS=$(date -d "$DAYS_AGO" +%s)
 
-echo "starting $0"
-
 usage() {
     echo "Usage: $0 [-e|--envfile] [-p|--prefix <string>] [-h|--help] [--run] [--full]" 1>&2
+cat <<EOF
+
+    <env_file> is the name of the file to read environment variables from.
+
+    Example 1: 
+    
+        $0 -e env/youruser -p youruser --run --full
+
+        backs up all repos it can find up to 10 pages of 100 repos per page
+
+    If the env file is not in the current directory, provide the full path to the file.
+
+    Example 2: 
+    
+        $0 -e env/youruser -p youruser --run 
+    
+        backs up repos that have been updated in the last 30 days
+
+    Example env file contentts
+
+    GIT_USERNAME=<your github username>
+    GIT_TOKEN=ghp_<your github personal access token>
+
+EOF
+
+
+
     exit 1
 }
 
@@ -46,7 +71,7 @@ while true; do
     --full)
         f=true
         shift
-        ;;        
+        ;;
     -h | --help)
         h=true
         usage
@@ -81,22 +106,23 @@ fi
 function clone_repo() {
 
     echo "Cloning $repo..."
-    # continue
     git clone "https://$GIT_USERNAME:$GIT_TOKEN@github.com/$repo.git"
 
     # Change into the cloned repository directory
     repo_name=$(basename "$repo")
     cd "$repo_name"
 
-    # Retrieve all branches
-    git fetch --all
+    # Fetch the latest changes from the remote repository
+    git fetch --prune
 
-    # Checkout each branch
-    branches=$(git branch -r | grep -v HEAD)
-    for branch in $branches; do
-        branch_name=$(echo "$branch" | sed 's/origin\///')
-        # stip out leading spaces from branch name
+    # Iterate through remote branches
+    remote_branches=$(git branch -r | grep -v HEAD)
+    for remote_branch in $remote_branches; do
+        branch_name=$(echo "$remote_branch" | sed 's/origin\///')
+        # Strip out leading spaces from branch name
         branch_name=$(echo "$branch_name" | sed 's/^ *//g')
+
+        # Checkout the branch
         echo "Checking out [$branch_name]..."
         git checkout "$branch_name"
     done
@@ -107,20 +133,14 @@ function clone_repo() {
     echo "Done cloning $repo."
     echo
 
-    # cd ..
-
 }
 
 # create a function that will process output of the response
 function backup_each_repo_in_page() {
     # use jq to extract full_name from each objecct in the json array
-    # echo $GIT_TOKEN
-    # echo $GIT_USERNAME
-    # echo $JSON
     repo_names=$(echo "$JSON" | jq -r '.[].full_name')
     # updated_at
     updated_at=$(echo "$JSON" | jq -r '.[].updated_at')
-    # repo_info=$(echo "$JSON" | jq -r '.[] | .full_name + " " + .updated_at')
     repo_info=$(echo "$JSON" | jq -r '.[] | "\(.full_name)|\(.updated_at)"')
 
     # Iterate over the repository names
@@ -134,22 +154,17 @@ function backup_each_repo_in_page() {
 
         # if $f is 'true' then clone all repos
         if [ -z "${f}" ]; then
-            # if the repo has not been updated in the last 30 days, skip it
+            # if the repo has not been updated in the last N days, skip it
             if [ "$epoch_timestamp" -lt "$CURRENT_DATE_MINUS_N_DAYS" ]; then
-                # echo "Skipping $repo as it has not been updated in the last 30 days."
                 continue
             fi
 
             echo "recently modified repo $repo datetime is $datetime"
-            # echo "----> Cloning $repo..."
             clone_repo
         else
-            # echo "cloning all repos as --full is present in the arguments"
             echo "repo is $repo [full backup in progress]"
             clone_repo
-            # continue
         fi
-
 
     done
 
@@ -202,14 +217,11 @@ function curl_github_api() {
             r=false
         fi
 
-        # # create a backupt directory with timestamp in the name and change into it
-        # BACKUP_DIR=$BACKUPS/$prefix$(date +%Y-%m-%d_%H-%M-%S)
-        # mkdir -p $BACKUP_DIR
         cd $BACKUP_DIR
 
         # process the response
         backup_each_repo_in_page
-
+        echo ""
         echo "... repositories have been cloned to $BACKUP_DIR"
 
     done
