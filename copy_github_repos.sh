@@ -20,6 +20,31 @@ CURRENT_DATE_MINUS_N_DAYS=$(date -d "$DAYS_AGO" +%s)
 # Initialize a counter for options
 option_count=0
 
+check_environment() {
+    # check bash is installed
+    if ! [ -x "$(command -v bash)" ]; then
+        echo "Error: bash is not installed." >&2
+        exit 1
+    fi
+    # check curl is installed
+    if ! [ -x "$(command -v curl)" ]; then
+        echo "Error: curl is not installed." >&2
+        exit 1
+    fi
+    # check jq is installed
+    if ! [ -x "$(command -v jq)" ]; then
+        echo "Error: jq is not installed." >&2
+        exit 1
+    fi
+    # check git is installed
+    if ! [ -x "$(command -v git)" ]; then
+        echo "Error: git is not installed." >&2
+        exit 1
+    fi
+
+}
+
+
 usage() {
     # TEMP=$(getopt -o e:p:w:rhf --long envfile:,prefix:,workdir:,run,help,full -n "$0" -- "$@")
     echo "Usage: $0 [-e|--envfile <string>] [-p|--prefix <string>] [-w | --workdir <string>] [-h|--help] [-r | --run] [-f | --full]" 1>&2
@@ -50,6 +75,8 @@ EOF
 
     exit 1
 }
+
+check_environment
 
 # Parse options using getopt
 TEMP=$(getopt -o e:p:w:rhf --long envfile:,prefix:,workdir:,run,help,full -n "$0" -- "$@")
