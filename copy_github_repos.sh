@@ -17,10 +17,13 @@ CURRENT_DATE=$(date +'%Y-%m-%d_%H-%M-%S')
 # this will be used to filter out repos that have not been updated in the last N days
 # eg./ 30 days = 2592000 seconds
 CURRENT_DATE_MINUS_N_DAYS=$(date -d "$DAYS_AGO" +%s)
+# Initialize a counter for options
+option_count=0
 
 usage() {
-    echo "Usage: $0 [-e|--envfile] [-p|--prefix <string>] [-h|--help] [--run] [--full]" 1>&2
-cat <<EOF
+    # TEMP=$(getopt -o e:p:w:rhf --long envfile:,prefix:,workdir:,run,help,full -n "$0" -- "$@")
+    echo "Usage: $0 [-e|--envfile <string>] [-p|--prefix <string>] [-w | --workdir <string>] [-h|--help] [-r | --run] [-f | --full]" 1>&2
+    cat <<EOF
 
     <env_file> is the name of the file to read environment variables from.
 
@@ -45,13 +48,15 @@ cat <<EOF
 
 EOF
 
-
-
     exit 1
 }
 
 # Parse options using getopt
-TEMP=$(getopt -o e:p:r:h --long envfile:,prefix:,run,help,full -n "$0" -- "$@")
+TEMP=$(getopt -o e:p:w:rhf --long envfile:,prefix:,workdir:,run,help,full -n "$0" -- "$@")
+# colons : after e, p, and w indicate that these options expect values.
+# The absence of a colon after r, h, and f indicates that they are boolean flags,
+# meaning they don't require values.
+
 eval set -- "$TEMP"
 
 while true; do
@@ -64,11 +69,15 @@ while true; do
         p=$2
         shift 2
         ;;
-    --run)
+    -w | --workdir)
+        workdir=$2
+        shift 2
+        ;;
+    -r | --run)
         r=true
         shift
         ;;
-    --full)
+    -f | --full)
         f=true
         shift
         ;;
@@ -85,7 +94,17 @@ while true; do
         usage
         ;;
     esac
+
+    # Increase the option count
+    option_count=$((option_count + 1))
+
 done
+
+# Check if no options were provided
+if [ "$option_count" -eq 0 ]; then
+    echo ""
+    usage
+fi
 
 if [ -z "${e}" ] && [ -z "${p}" ]; then
     # Both -e and -p are empty, treat them as optional
@@ -217,6 +236,12 @@ function curl_github_api() {
             r=false
         fi
 
+        if [ ! -z "${workdir}" ]; then
+            echo "workdir is not empty, setting BACKUP_DIR to workdir"
+            BACKUP_DIR="${workdir}"
+            mkdir -p $BACKUP_DIR
+        fi
+
         cd $BACKUP_DIR
 
         # process the response
@@ -230,11 +255,14 @@ function curl_github_api() {
 
 function main() {
 
-    echo "starting main with arguments:"
-    echo "e = ${e}"
-    echo "p = ${p}"
-    echo "r = ${r}"
-    echo "f = ${f}"
+    echo ""
+    echo "using the following arguments:"
+    echo ""
+    echo "envfile = ${e}"
+    echo " prefix = ${p}"
+    echo "    run = ${r}"
+    echo "   full = ${f}"
+    echo "workdir = ${workdir}"
 
     # if the environment file doesn't exist, print error and exit
     if [ ! -f "$e" ]; then
@@ -256,6 +284,15 @@ function main() {
     if [ -z "${r}" ]; then
         echo "not running anything as --run is not present in the arguments"
     else
+
+        if [ ! -z "${workdir}" ]; then
+            echo "workdir is not empty, setting BACKUP_DIR to workdir"
+            BACKUP_DIR="${workdir}"
+            mkdir -p $BACKUP_DIR
+            LOGS_DIR="${workdir}/logs"
+            mkdir -p $LOGS_DIR
+        fi
+
         LOG_FILE="$LOGS_DIR/$GIT_USERNAME-$CURRENT_DATE.log"
         # create logs directory if it doesn't exist
         if [ ! -d "$LOGS_DIR" ]; then
@@ -270,7 +307,7 @@ function main() {
         echo "backups is $BACKUPS"
         echo "prefix is $prefix"
         echo "CURRENT_DATE is $CURRENT_DATE"
-
+        echo "BACKUP_DIR is $BACKUP_DIR"
         mkdir -p $BACKUP_DIR
         curl_github_api
     fi
