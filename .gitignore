@@ -1,0 +1,9 @@
+.env
+env/*
+old/*
+backups/*
+home/*
+curl_repos.sh
+run_backups.sh
+data/*
+local/*
